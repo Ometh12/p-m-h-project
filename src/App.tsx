@@ -63,7 +63,7 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
-  
+
   useEffect(() => {
     fetch('https://www.cheapshark.com/api/1.0/deals?storeID=1,11&upperPrice=25')
       .then(res => res.json())
@@ -75,28 +75,33 @@ export default function App() {
   }, [watchlist]);
 
   // --- NEW: Real Supabase Auth Handler ---
-  const handleAuth = async (e: React.FormEvent) => {
+const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthenticating(true);
 
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email: emailInput, password: passwordInput });
-      if (error) {
-        showToast(`❌ Error: ${error.message}`);
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({ 
+          email: emailInput, 
+          password: passwordInput 
+        });
+        if (error) throw error;
+        showToast(`✅ Account registered successfully!`);
       } else {
-        showToast(`✅ Account created! Check your email if verification is required.`);
-      }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email: emailInput, password: passwordInput });
-      if (error) {
-        showToast(`❌ Login failed: ${error.message}`);
-      } else {
+        const { error } = await supabase.auth.signInWithPassword({ 
+          email: emailInput, 
+          password: passwordInput 
+        });
+        if (error) throw error;
         showToast(`✅ Secure connection established.`);
       }
+    } catch (error: any) {
+      console.error("Authentication Error:", error);
+      showToast(`❌ Error: ${error.message || "Network connection failed"}`);
+    } finally {
+      setIsAuthenticating(false);
     }
-    setIsAuthenticating(false);
   };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsSettingsOpen(false);
