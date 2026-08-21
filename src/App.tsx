@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut } from 'lucide-react';
+import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut, Grid3X3, Columns, ShieldAlert, Percent, Coins } from 'lucide-react';
 import { STORE_MAP, formatPrice, getHighResImage, CURRENCY_RATES } from './utils';
 import Navbar from './components/Navbar';
 import InteractiveChart from './components/InteractiveChart';
-import { supabase } from './supabaseClient'; // --- NEW: Import real Supabase client ---
+import { supabase } from './supabaseClient';
 
 interface Deal { gameID: string; title: string; salePrice: string; normalPrice: string; savings: string; thumb: string; }
 interface SearchResult { gameID: string; external: string; cheapest: string; thumb: string; }
@@ -17,7 +17,16 @@ export default function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'account' | 'data'>('account');
+  const [settingsTab, setSettingsTab] = useState<'account' | 'data' | 'global'>('data');
+
+  // --- NEW: Advanced Matrix & Global Settings State ---
+  const [showGridlines, setShowGridlines] = useState(false);
+  const [autoFitColumns, setAutoFitColumns] = useState(false);
+  const [safeDelete, setSafeDelete] = useState(true);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  
+  const [globalDealFloor, setGlobalDealFloor] = useState<number>(0);
+  const [currency, setCurrency] = useState<string>('USD');
 
   const [deals, setDeals] = useState<Deal[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -36,9 +45,8 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
-  const [minDiscount, setMinDiscount] = useState<number>(0);
-  const [currency, setCurrency] = useState<string>('USD');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
+  const [minDiscount, setMinDiscount] = useState<number>(globalDealFloor);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState<'title' | 'price' | 'savings'>('savings');
@@ -49,18 +57,13 @@ export default function App() {
     setTimeout(() => { setToastMessage(null); }, 3000);
   };
 
-  // --- NEW: Check active Supabase Session on load ---
- useEffect(() => {
-    // Check initial session
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
-
-    // Synchronous auth state change listener to prevent deadlocks
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -74,24 +77,20 @@ export default function App() {
     localStorage.setItem('appleWatchlist', JSON.stringify(watchlist));
   }, [watchlist]);
 
-  // --- NEW: Real Supabase Auth Handler ---
-const handleAuth = async (e: React.FormEvent) => {
+  useEffect(() => {
+    setMinDiscount(globalDealFloor);
+  }, [globalDealFloor]);
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthenticating(true);
-
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ 
-          email: emailInput, 
-          password: passwordInput 
-        });
+        const { error } = await supabase.auth.signUp({ email: emailInput, password: passwordInput });
         if (error) throw error;
         showToast(`✅ Account registered successfully!`);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ 
-          email: emailInput, 
-          password: passwordInput 
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email: emailInput, password: passwordInput });
         if (error) throw error;
         showToast(`✅ Secure connection established.`);
       }
@@ -102,6 +101,7 @@ const handleAuth = async (e: React.FormEvent) => {
       setIsAuthenticating(false);
     }
   };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setIsSettingsOpen(false);
@@ -147,12 +147,25 @@ const handleAuth = async (e: React.FormEvent) => {
     setIsModalOpen(false);
   };
 
+  // --- NEW: Safe Deletion Logic ---
   const removeFromWatchlist = (id: string) => {
+    if (safeDelete && pendingDeleteId !== id) {
+      setPendingDeleteId(id);
+      showToast(`⚠️ Safe Mode: Click delete again to confirm row removal.`);
+      
+      // Auto-reset the pending delete status after 4 seconds
+      setTimeout(() => {
+        setPendingDeleteId(null);
+      }, 4000);
+      return;
+    }
+
     setWatchlist(prev => {
       const game = prev.find(item => item.id === id);
       if (game) showToast(`🗑️ ${game.title} removed from matrix.`);
       return prev.filter(item => item.id !== id);
     });
+    setPendingDeleteId(null);
   };
 
   const exportWatchlistToCSV = () => {
@@ -202,7 +215,6 @@ const handleAuth = async (e: React.FormEvent) => {
     return 0;
   });
 
-  // --- REAL AUTH SCREEN ---
   if (!session) {
     return (
       <div className="min-h-screen bg-[#000000] text-[#f5f5f7] font-sans antialiased flex items-center justify-center relative overflow-hidden">
@@ -224,25 +236,11 @@ const handleAuth = async (e: React.FormEvent) => {
           <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Email Address</label>
-              <input 
-                type="email" 
-                required 
-                placeholder="operator@domain.com"
-                value={emailInput} 
-                onChange={(e) => setEmailInput(e.target.value)} 
-                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono transition-all" 
-              />
+              <input type="email" required placeholder="operator@domain.com" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono transition-all" />
             </div>
             <div className="space-y-1 pb-2">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Password</label>
-              <input 
-                type="password" 
-                required 
-                placeholder="••••••••"
-                value={passwordInput} 
-                onChange={(e) => setPasswordInput(e.target.value)} 
-                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono tracking-widest transition-all" 
-              />
+              <input type="password" required placeholder="••••••••" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono tracking-widest transition-all" />
             </div>
             
             <button type="submit" disabled={isAuthenticating} className="w-full bg-white text-black py-3.5 rounded-xl font-medium text-sm hover:bg-gray-200 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2">
@@ -268,7 +266,11 @@ const handleAuth = async (e: React.FormEvent) => {
     );
   }
 
-  // --- MAIN APP ---
+  // --- Dynamic Table Styling Classes based on user settings ---
+  const tableClasses = `w-full text-left border-collapse ${autoFitColumns ? 'table-auto' : 'table-fixed'}`;
+  const cellClasses = `p-4 font-sans ${showGridlines ? 'border border-white/10' : ''} ${autoFitColumns ? 'whitespace-nowrap' : ''}`;
+  const headerClasses = `p-5 text-[11px] uppercase tracking-wider text-gray-400 font-medium select-none bg-black/20 ${showGridlines ? 'border border-white/10' : 'border-b border-white/8'}`;
+
   return (
     <div className="min-h-screen bg-[#000000] text-[#f5f5f7] font-sans antialiased selection:bg-white/30 relative overflow-x-hidden">
       
@@ -439,26 +441,26 @@ const handleAuth = async (e: React.FormEvent) => {
               )}
 
               {viewMode === 'table' && (
-                <div className="bg-[#161617]/60 border border-white/8 rounded-3xl overflow-hidden backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] animate-in fade-in duration-500">
-                  <table className="w-full text-left border-collapse">
+                <div className={`bg-[#161617]/60 border border-white/8 rounded-3xl overflow-x-auto backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] animate-in fade-in duration-500`}>
+                  <table className={tableClasses}>
                     <thead>
-                      <tr className="border-b border-white/8 text-[11px] uppercase tracking-wider text-gray-400 font-medium select-none bg-black/20">
-                        <th className="p-5 cursor-pointer hover:text-white transition-colors group" onClick={() => handleSort('title')}>
+                      <tr>
+                        <th className={`${headerClasses} cursor-pointer hover:text-white transition-colors group`} onClick={() => handleSort('title')}>
                           Asset Identifier <SortIcon column="title" />
                         </th>
-                        <th className="p-5 hidden md:table-cell">Standard MSRP</th>
-                        <th className="p-5 cursor-pointer hover:text-white transition-colors group" onClick={() => handleSort('price')}>
+                        <th className={`${headerClasses} hidden md:table-cell`}>Standard MSRP</th>
+                        <th className={`${headerClasses} cursor-pointer hover:text-white transition-colors group`} onClick={() => handleSort('price')}>
                           Live Acquisition <SortIcon column="price" />
                         </th>
-                        <th className="p-5 cursor-pointer hover:text-white transition-colors group" onClick={() => handleSort('savings')}>
+                        <th className={`${headerClasses} cursor-pointer hover:text-white transition-colors group`} onClick={() => handleSort('savings')}>
                           Deal Score <SortIcon column="savings" />
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/4 text-sm font-mono">
+                    <tbody className={`text-sm font-mono ${!showGridlines ? 'divide-y divide-white/4' : ''}`}>
                       {searchQuery && searchResults.length === 0 ? (
                          <tr>
-                           <td colSpan={4} className="py-16 text-center text-gray-500 bg-black/20 font-sans">
+                           <td colSpan={4} className={`${cellClasses} py-16 text-center text-gray-500 bg-black/20 font-sans`}>
                              <SearchX size={32} className="mx-auto text-gray-600 mb-3 animate-bounce" />
                              Matrix yielded no results. Try adjusting the query string.
                            </td>
@@ -466,13 +468,13 @@ const handleAuth = async (e: React.FormEvent) => {
                       ) : searchQuery && searchResults.length > 0 ? (
                         sortedSearchResults.map((game) => (
                           <tr key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="hover:bg-white/6 cursor-pointer transition-colors duration-200 group">
-                            <td className="p-4 flex items-center gap-4 font-sans">
+                            <td className={`${cellClasses} flex items-center gap-4 font-sans`}>
                               <img src={getHighResImage(game.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== game.thumb) img.src = game.thumb; }} alt="thumb" className="w-16 h-8 rounded-md object-cover border border-white/10 group-hover:scale-105 transition-transform shadow-md" />
                               <span className="font-medium text-white/90 group-hover:text-white">{game.external}</span>
                             </td>
-                            <td className="p-4 text-gray-600 hidden md:table-cell">--</td>
-                            <td className="p-4 font-semibold text-white">{formatPrice(game.cheapest, currency)} <span className="text-xs text-gray-500 font-normal font-sans ml-1">Floor</span></td>
-                            <td className="p-4 text-gray-600 text-xs font-sans">Search Data</td>
+                            <td className={`${cellClasses} text-gray-600 hidden md:table-cell`}>--</td>
+                            <td className={`${cellClasses} font-semibold text-white`}>{formatPrice(game.cheapest, currency)} <span className="text-xs text-gray-500 font-normal font-sans ml-1">Floor</span></td>
+                            <td className={`${cellClasses} text-gray-600 text-xs font-sans`}>Search Data</td>
                           </tr>
                         ))
                       ) : (
@@ -481,13 +483,13 @@ const handleAuth = async (e: React.FormEvent) => {
                           const tier = getDealTier(savingsNum);
                           return (
                             <tr key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="hover:bg-white/6 cursor-pointer transition-colors duration-200 group">
-                              <td className="p-4 flex items-center gap-4 font-sans">
+                              <td className={`${cellClasses} flex items-center gap-4 font-sans`}>
                                 <img src={getHighResImage(deal.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== deal.thumb) img.src = deal.thumb; }} alt="thumb" className="w-16 h-8 rounded-md object-cover border border-white/10 group-hover:scale-105 transition-transform shadow-md" />
-                                <span className="font-medium text-white/90 group-hover:text-white">{deal.title}</span>
+                                <span className="font-medium text-white/90 group-hover:text-white truncate">{deal.title}</span>
                               </td>
-                              <td className="p-4 text-gray-500 line-through hidden md:table-cell text-xs">{formatPrice(deal.normalPrice, currency)}</td>
-                              <td className="p-4 font-semibold text-emerald-400">{formatPrice(deal.salePrice, currency)}</td>
-                              <td className="p-4 flex items-center gap-3 font-sans">
+                              <td className={`${cellClasses} text-gray-500 line-through hidden md:table-cell text-xs`}>{formatPrice(deal.normalPrice, currency)}</td>
+                              <td className={`${cellClasses} font-semibold text-emerald-400`}>{formatPrice(deal.salePrice, currency)}</td>
+                              <td className={`${cellClasses} flex items-center gap-3 font-sans`}>
                                 <span className={`font-bold text-[9px] px-2 py-1 rounded-md border ${tier.color}`}>
                                   {tier.label}
                                 </span>
@@ -534,14 +536,17 @@ const handleAuth = async (e: React.FormEvent) => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {watchlist.map(game => (
-                <div key={game.id} className="group flex justify-between items-center bg-black/50 border border-white/6 p-4 rounded-2xl transition-all duration-300 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]">
+                <div key={game.id} className={`group flex justify-between items-center bg-black/50 border ${pendingDeleteId === game.id ? 'border-red-500 bg-red-500/10 scale-[0.98]' : 'border-white/6 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1'} p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]`}>
                   <div>
                     <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-45 mb-1">{game.title}</h4>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1 font-mono">
                       <Bell size={10} className="text-blue-400" /> Target: {formatPrice(game.targetPrice, currency)}
                     </span>
                   </div>
-                  <button onClick={() => removeFromWatchlist(game.id)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 text-gray-400 hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeFromWatchlist(game.id); }} 
+                    className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${pendingDeleteId === game.id ? 'bg-red-500 text-white animate-pulse' : 'bg-white/5 text-gray-400 hover:bg-red-500 hover:text-white opacity-0 group-hover:opacity-100'}`}
+                  >
                     <X size={14} />
                   </button>
                 </div>
@@ -551,12 +556,12 @@ const handleAuth = async (e: React.FormEvent) => {
         </div>
       </main>
 
-      {/* Settings Modal */}
+      {/* --- UPGRADED ADVANCED SETTINGS MODAL --- */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsSettingsOpen(false)}></div>
           
-          <div className="relative w-full max-w-xl bg-[#1c1c1e] border border-white/15 rounded-[2rem] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,1),inset_0_1px_0_rgba(255,255,255,0.1)] animate-in fade-in zoom-in-95 duration-300 flex flex-col text-white">
+          <div className="relative w-full max-w-2xl bg-[#1c1c1e] border border-white/15 rounded-[2rem] overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,1),inset_0_1px_0_rgba(255,255,255,0.1)] animate-in fade-in zoom-in-95 duration-300 flex flex-col text-white">
             <div className="flex items-center justify-between p-6 border-b border-white/10 bg-[#161617]/50">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
@@ -570,60 +575,140 @@ const handleAuth = async (e: React.FormEvent) => {
             </div>
             
             <div className="flex border-b border-white/5 bg-[#111]">
+              <button onClick={() => setSettingsTab('data')} className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${settingsTab === 'data' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>Grid & Matrix Controls</button>
+              <button onClick={() => setSettingsTab('global')} className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${settingsTab === 'global' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>Global Thresholds</button>
               <button onClick={() => setSettingsTab('account')} className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${settingsTab === 'account' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>Account & Security</button>
-              <button onClick={() => setSettingsTab('data')} className={`flex-1 py-3 text-xs font-semibold uppercase tracking-wider transition-colors ${settingsTab === 'data' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}>Data & Matrix Control</button>
             </div>
 
-            <div className="p-8">
-              {settingsTab === 'account' ? (
+            <div className="p-8 max-h-[60vh] overflow-y-auto">
+              {settingsTab === 'data' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="flex items-center gap-4 mb-8">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 border-2 border-white/10 shadow-lg flex items-center justify-center">
-                      <User size={32} className="text-white" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* Toggle: Printable Gridlines */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Grid3X3 size={16} className="text-blue-400"/> Printable Gridlines</h4>
+                        <p className="text-xs text-gray-400 mb-4">Enforce hard structural borders within the matrix for easier data isolation and standard spreadsheet parsing.</p>
+                      </div>
+                      <button 
+                        onClick={() => setShowGridlines(!showGridlines)}
+                        className={`w-full py-2 rounded-xl text-xs font-medium transition-all border ${showGridlines ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'}`}
+                      >
+                        {showGridlines ? 'Enabled' : 'Disabled'}
+                      </button>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-lg">Authenticated Operator</h4>
-                      <p className="text-gray-400 text-sm font-mono">{session.user.email}</p>
+
+                    {/* Toggle: Auto-fit Columns */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Columns size={16} className="text-emerald-400"/> Auto-fit Column Widths</h4>
+                        <p className="text-xs text-gray-400 mb-4">Compress data arrays to wrap tightly around asset identifiers and numerical values automatically.</p>
+                      </div>
+                      <button 
+                        onClick={() => setAutoFitColumns(!autoFitColumns)}
+                        className={`w-full py-2 rounded-xl text-xs font-medium transition-all border ${autoFitColumns ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'}`}
+                      >
+                        {autoFitColumns ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
+
+                    {/* Toggle: Safe Mode Deletion */}
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-5 md:col-span-2 flex justify-between items-center">
+                      <div className="pr-8">
+                        <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><ShieldAlert size={16} className="text-amber-400"/> Safe Mode: Row Management</h4>
+                        <p className="text-xs text-gray-400">Require double-verification when removing assets from the active matrix to prevent accidental data loss.</p>
+                      </div>
+                      <button 
+                        onClick={() => setSafeDelete(!safeDelete)}
+                        className={`px-6 py-2 rounded-xl text-xs font-medium transition-all border whitespace-nowrap ${safeDelete ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'}`}
+                      >
+                        {safeDelete ? 'Active' : 'Bypassed'}
+                      </button>
                     </div>
                   </div>
                   
-                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-                     <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-500"/> Supabase Auth Active</h4>
-                     <p className="text-xs text-gray-400 leading-relaxed">
-                       Session managed securely through PostgreSQL token handshakes.
-                     </p>
-                     <div className="text-[10px] font-mono text-emerald-500/70 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/20">STATUS: VERIFIED SESSION</div>
+                  <div className="border-t border-white/10 pt-6">
+                    <button onClick={exportWatchlistToCSV} className="w-full bg-white/10 hover:bg-white text-white hover:text-black py-3 rounded-xl text-sm font-medium transition-all shadow-md flex items-center justify-center gap-2">
+                      <Download size={16} /> Compile CSV Data Export
+                    </button>
                   </div>
-
-                  <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500 border border-red-500/20 hover:border-red-500 text-red-400 hover:text-white py-3 rounded-xl font-medium text-sm transition-all mt-4 shadow-md">
-                    <LogOut size={16} /> Terminate Session
-                  </button>
                 </div>
-              ) : (
+              )}
+
+              {settingsTab === 'global' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                    <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-3">Data Structuring & Export</h4>
-                    <p className="text-xs text-gray-400 mb-4 leading-relaxed">Export your tracked matrix directly into a raw CSV format for advanced tabular formatting and data analysis in spreadsheet software.</p>
-                    <button onClick={exportWatchlistToCSV} className="w-full bg-white/10 hover:bg-white text-white hover:text-black py-2.5 rounded-xl text-sm font-medium transition-all shadow-md flex items-center justify-center gap-2">
-                      <Download size={16} /> Compile CSV Export
-                    </button>
+                     <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Percent size={16} className="text-blue-400"/> Global Deal Floor</h4>
+                     <p className="text-xs text-gray-400 mb-4">Establish a strict baseline threshold. Telemetry below this margin will be permanently filtered from the dashboard until modified.</p>
+                     
+                     <div className="flex gap-2">
+                       {[0, 50, 75, 90].map(val => (
+                         <button 
+                           key={val}
+                           onClick={() => setGlobalDealFloor(val)}
+                           className={`flex-1 py-2.5 rounded-xl font-mono text-sm transition-all border ${globalDealFloor === val ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-[#111] border-white/10 text-gray-400 hover:border-white/30'}`}
+                         >
+                           {val === 0 ? '0%' : `+${val}%`}
+                         </button>
+                       ))}
+                     </div>
                   </div>
 
-                  <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5">
-                    <h4 className="text-xs uppercase tracking-wider text-red-400 font-semibold mb-2">Danger Zone</h4>
-                    <p className="text-xs text-gray-500 mb-4">Permanently wipe all tracking data from local storage. This action cannot be reversed.</p>
-                    <button onClick={() => { setWatchlist([]); showToast('🗑️ Matrix fully wiped.'); setIsSettingsOpen(false); }} className="w-full bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white py-2.5 rounded-xl text-sm font-medium transition-all shadow-md">
-                      Wipe Matrix Data
-                    </button>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                     <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Coins size={16} className="text-emerald-400"/> Fiat Currency Locking</h4>
+                     <p className="text-xs text-gray-400 mb-4">Hard-lock the conversion rates across all pricing telemetry.</p>
+                     
+                     <div className="flex gap-2">
+                       {['USD', 'EUR', 'GBP'].map(curr => (
+                         <button 
+                           key={curr}
+                           onClick={() => setCurrency(curr)}
+                           className={`flex-1 py-2.5 rounded-xl font-mono text-sm transition-all border ${currency === curr ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-[#111] border-white/10 text-gray-400 hover:border-white/30'}`}
+                         >
+                           {curr}
+                         </button>
+                       ))}
+                     </div>
                   </div>
                 </div>
+              )}
+
+              {settingsTab === 'account' && (
+                 <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+                 <div className="flex items-center gap-4 mb-8">
+                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 border-2 border-white/10 shadow-lg flex items-center justify-center">
+                     <User size={32} className="text-white" />
+                   </div>
+                   <div>
+                     <h4 className="font-semibold text-lg">Authenticated Operator</h4>
+                     <p className="text-gray-400 text-sm font-mono">{session.user.email}</p>
+                   </div>
+                 </div>
+                 
+                 <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+                    <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-500"/> Supabase Auth Active</h4>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      Session managed securely through PostgreSQL token handshakes. 
+                    </p>
+                    <div className="text-[10px] font-mono text-emerald-500/70 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/20">STATUS: VERIFIED SESSION</div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                   <button onClick={() => { setWatchlist([]); showToast('🗑️ Matrix fully wiped.'); setIsSettingsOpen(false); }} className="w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 hover:text-amber-300 py-3 rounded-xl font-medium text-sm transition-all shadow-md">
+                     Wipe Local Data
+                   </button>
+                   <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500 border border-red-500/20 hover:border-red-500 text-red-400 hover:text-white py-3 rounded-xl font-medium text-sm transition-all shadow-md">
+                     <LogOut size={16} /> Terminate
+                   </button>
+                 </div>
+               </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Game Details Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)}></div>
@@ -756,7 +841,7 @@ const handleAuth = async (e: React.FormEvent) => {
       )}
 
       <div 
-        className={`fixed bottom-6 right-6 z-100 transition-all duration-500 transform ${
+        className={`fixed bottom-6 right-6 z-[100] transition-all duration-500 transform ${
           toastMessage ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'
         }`}
       >
