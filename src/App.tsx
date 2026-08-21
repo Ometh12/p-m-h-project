@@ -3,15 +3,19 @@ import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, F
 import { STORE_MAP, formatPrice, getHighResImage, CURRENCY_RATES } from './utils';
 import Navbar from './components/Navbar';
 import InteractiveChart from './components/InteractiveChart';
+import { supabase } from './supabaseClient'; // --- NEW: Import real Supabase client ---
 
 interface Deal { gameID: string; title: string; salePrice: string; normalPrice: string; savings: string; thumb: string; }
 interface SearchResult { gameID: string; external: string; cheapest: string; thumb: string; }
 interface WatchlistItem { id: string; title: string; targetPrice: number; }
 
 export default function App() {
-  // --- NEW: Auth & Settings State ---
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [session, setSession] = useState<any>(null);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'account' | 'data'>('account');
 
@@ -45,6 +49,19 @@ export default function App() {
     setTimeout(() => { setToastMessage(null); }, 3000);
   };
 
+  // --- NEW: Check active Supabase Session on load ---
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   useEffect(() => {
     fetch('https://www.cheapshark.com/api/1.0/deals?storeID=1,11&upperPrice=25')
       .then(res => res.json())
@@ -55,21 +72,33 @@ export default function App() {
     localStorage.setItem('appleWatchlist', JSON.stringify(watchlist));
   }, [watchlist]);
 
-  // --- NEW: Login Handler ---
-  const handleLogin = (e: React.FormEvent) => {
+  // --- NEW: Real Supabase Auth Handler ---
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthenticating(true);
-    // Fake a 1.5 second secure network request
-    setTimeout(() => {
-      setIsAuthenticating(false);
-      setIsAuthenticated(true);
-      showToast('✅ Encrypted handshake successful. Welcome back.');
-    }, 1500);
+
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ email: emailInput, password: passwordInput });
+      if (error) {
+        showToast(`❌ Error: ${error.message}`);
+      } else {
+        showToast(`✅ Account created! Check your email if verification is required.`);
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email: emailInput, password: passwordInput });
+      if (error) {
+        showToast(`❌ Login failed: ${error.message}`);
+      } else {
+        showToast(`✅ Secure connection established.`);
+      }
+    }
+    setIsAuthenticating(false);
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsSettingsOpen(false);
+    showToast(`🔒 Session terminated securely.`);
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -166,11 +195,10 @@ export default function App() {
     return 0;
   });
 
-  // --- NEW: The Login Screen ---
-  if (!isAuthenticated) {
+  // --- REAL AUTH SCREEN ---
+  if (!session) {
     return (
       <div className="min-h-screen bg-[#000000] text-[#f5f5f7] font-sans antialiased flex items-center justify-center relative overflow-hidden">
-        {/* Ambient Aurora Background for Login */}
         <div className="absolute inset-0 z-0 pointer-events-none">
           <div className="absolute top-[20%] left-[15%] w-[40vw] h-[40vw] rounded-full bg-blue-600/10 blur-[120px] animate-pulse" style={{ animationDuration: '6s' }}></div>
           <div className="absolute bottom-[20%] right-[15%] w-[35vw] h-[35vw] rounded-full bg-purple-600/10 blur-[140px] animate-pulse" style={{ animationDuration: '8s' }}></div>
@@ -181,43 +209,62 @@ export default function App() {
             <Lock className="text-blue-400" size={20} />
           </div>
           
-          <div className="text-center mb-10">
-            <h1 className="text-2xl font-semibold tracking-tight text-white mb-2">Terminal Access</h1>
-            <p className="text-sm text-gray-400">Initialize secure connection to telemetry matrix.</p>
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-semibold tracking-tight text-white mb-2">{isSignUp ? 'Create Operator Account' : 'Terminal Access'}</h1>
+            <p className="text-sm text-gray-400">{isSignUp ? 'Register credentials with Supabase DB' : 'Initialize secure connection to database.'}</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleAuth} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Operator ID</label>
-              <input type="email" required defaultValue="admin@gametracker.pro" className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 font-mono transition-all" />
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Email Address</label>
+              <input 
+                type="email" 
+                required 
+                placeholder="operator@domain.com"
+                value={emailInput} 
+                onChange={(e) => setEmailInput(e.target.value)} 
+                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono transition-all" 
+              />
             </div>
-            <div className="space-y-1 pb-4">
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Access Code</label>
-              <input type="password" required defaultValue="********" className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 font-mono tracking-widest transition-all" />
+            <div className="space-y-1 pb-2">
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold px-2">Password</label>
+              <input 
+                type="password" 
+                required 
+                placeholder="••••••••"
+                value={passwordInput} 
+                onChange={(e) => setPasswordInput(e.target.value)} 
+                className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-blue-500/50 font-mono tracking-widest transition-all" 
+              />
             </div>
             
             <button type="submit" disabled={isAuthenticating} className="w-full bg-white text-black py-3.5 rounded-xl font-medium text-sm hover:bg-gray-200 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2">
               {isAuthenticating ? (
-                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div> Authenticating...</>
+                <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div> Processing...</>
               ) : (
-                <>Establish Connection</>
+                <>{isSignUp ? 'Register Account' : 'Establish Connection'}</>
               )}
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-center gap-2 text-[10px] text-gray-500 font-mono">
-            <ShieldCheck size={12} className="text-emerald-500" /> End-to-End Client Protocol Enforced
+          <div className="mt-6 text-center">
+            <button onClick={() => setIsSignUp(!isSignUp)} className="text-xs text-gray-400 hover:text-white transition-colors">
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-white/5 flex items-center justify-center gap-2 text-[10px] text-gray-500 font-mono">
+            <ShieldCheck size={12} className="text-emerald-500" /> Supabase Auth Security Active
           </div>
         </div>
       </div>
     );
   }
 
-  // --- THE MAIN APP (Only renders if authenticated) ---
+  // --- MAIN APP ---
   return (
     <div className="min-h-screen bg-[#000000] text-[#f5f5f7] font-sans antialiased selection:bg-white/30 relative overflow-x-hidden">
       
-      {/* Dynamic Aurora Background */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-10%] left-[20%] w-[50vw] h-[50vw] rounded-full bg-blue-600/20 blur-[140px] animate-pulse" style={{ animationDuration: '8s' }}></div>
         <div className="absolute top-[30%] right-[-10%] w-[45vw] h-[45vw] rounded-full bg-purple-600/15 blur-[160px] animate-pulse" style={{ animationDuration: '10s' }}></div>
@@ -226,7 +273,6 @@ export default function App() {
 
       <Navbar currency={currency} setCurrency={setCurrency} watchlistCount={watchlist.length} />
 
-      {/* --- NEW: Floating Settings & Profile Controls --- */}
       <div className="fixed top-5 right-6 z-40 flex items-center gap-3">
         <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 rounded-full bg-[#161617]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/30 transition-all shadow-lg hover:scale-105 active:scale-95">
           <Settings size={16} />
@@ -498,7 +544,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* --- NEW: Settings Overlay Modal --- */}
+      {/* Settings Modal */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsSettingsOpen(false)}></div>
@@ -529,17 +575,17 @@ export default function App() {
                       <User size={32} className="text-white" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-lg">Admin Operator</h4>
-                      <p className="text-gray-400 text-sm font-mono">ID: admin@gametracker.pro</p>
+                      <h4 className="font-semibold text-lg">Authenticated Operator</h4>
+                      <p className="text-gray-400 text-sm font-mono">{session.user.email}</p>
                     </div>
                   </div>
                   
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-                     <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-500"/> Security Protocol</h4>
+                     <h4 className="text-xs uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-2"><ShieldCheck size={14} className="text-emerald-500"/> Supabase Auth Active</h4>
                      <p className="text-xs text-gray-400 leading-relaxed">
-                       Matrix telemetry is secured via localized storage protocols. No external telemetry is transmitted outside of the encrypted client environment.
+                       Session managed securely through PostgreSQL token handshakes.
                      </p>
-                     <div className="text-[10px] font-mono text-emerald-500/70 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/20">STATUS: E2E ENCRYPTION ACTIVE</div>
+                     <div className="text-[10px] font-mono text-emerald-500/70 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/20">STATUS: VERIFIED SESSION</div>
                   </div>
 
                   <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500 border border-red-500/20 hover:border-red-500 text-red-400 hover:text-white py-3 rounded-xl font-medium text-sm transition-all mt-4 shadow-md">
@@ -570,7 +616,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- Existing Game Details Modal --- */}
+      {/* Game Details Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)}></div>
