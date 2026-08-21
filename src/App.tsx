@@ -50,18 +50,20 @@ export default function App() {
   };
 
   // --- NEW: Check active Supabase Session on load ---
-  useEffect(() => {
+ useEffect(() => {
+    // Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
+    // Synchronous auth state change listener to prevent deadlocks
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
+  
   useEffect(() => {
     fetch('https://www.cheapshark.com/api/1.0/deals?storeID=1,11&upperPrice=25')
       .then(res => res.json())
