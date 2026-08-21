@@ -29,7 +29,6 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [minDiscount, setMinDiscount] = useState<number>(0);
   const [currency, setCurrency] = useState<string>('USD');
-  const [hoveredStore, setHoveredStore] = useState<any>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [sortBy, setSortBy] = useState<'title' | 'price' | 'savings'>('savings');
@@ -68,12 +67,11 @@ export default function App() {
   };
 
   const handleCardClick = async (gameID: string) => {
-    setIsModalOpen(true); setSelectedGame(null); setHoveredStore(null);
+    setIsModalOpen(true); setSelectedGame(null);
     try {
       const res = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${gameID}`);
       const data = await res.json();
       setSelectedGame({ ...data, internalGameID: gameID });
-      if (data.deals && data.deals.length > 0) setHoveredStore(data.deals[0]);
     } catch (error) { console.error("Failed to load game data"); }
   };
 
@@ -111,7 +109,7 @@ export default function App() {
   };
 
   const getDealTier = (savingsPercent: number) => {
-    if (savingsPercent >= 85) return { label: 'S-TIER', color: 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] border-transparent', icon: <Flame size={10} className="mr-1 inline" /> };
+    if (savingsPercent >= 85) return { label: 'S-TIER', color: 'bg-linear-to-r from-orange-500 to-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] border-transparent', icon: <Flame size={10} className="mr-1 inline" /> };
     if (savingsPercent >= 70) return { label: 'A-TIER', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', icon: null };
     if (savingsPercent >= 50) return { label: 'B-TIER', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30', icon: null };
     return { label: 'C-TIER', color: 'bg-white/5 text-gray-400 border-white/10', icon: null };
@@ -164,7 +162,7 @@ export default function App() {
           </div>
           <h1 className="text-6xl md:text-8xl font-semibold tracking-tight mb-6 text-white leading-[1.05]">
             Profound savings. <br />
-            <span className="bg-gradient-to-r from-gray-100 via-gray-400 to-gray-600 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-gray-100 via-gray-400 to-gray-600 bg-clip-text text-transparent">
               Engineered for players.
             </span>
           </h1>
@@ -182,7 +180,7 @@ export default function App() {
               className="w-full bg-[#161617]/80 backdrop-blur-xl border border-white/10 rounded-full py-4 pl-14 pr-28 text-sm text-white focus:outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 transition-all placeholder:text-gray-600 shadow-2xl"
             />
             {searchQuery && (
-               <button type="button" onClick={clearSearch} className="absolute right-[88px] top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+               <button type="button" onClick={clearSearch} className="absolute right-22 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
                  <X size={16} />
                </button>
             )}
@@ -192,7 +190,7 @@ export default function App() {
           </form>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-10 pb-6 border-b border-white/[0.08] gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-10 pb-6 border-b border-white/8 gap-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter size={15} className="text-gray-400" />
@@ -241,7 +239,7 @@ export default function App() {
           {(loading || isSearching) ? (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
                {[...Array(8)].map((_, i) => (
-                 <div key={i} className="bg-[#161617]/40 border border-white/[0.04] rounded-3xl p-4">
+                 <div key={i} className="bg-[#161617]/40 border border-white/4 rounded-3xl p-4">
                    <div className="flex flex-col gap-3">
                      <div className="rounded-2xl bg-white/5 aspect-video w-full"></div>
                      <div className="h-4 bg-white/10 rounded-full w-3/4 mt-1"></div>
@@ -258,7 +256,7 @@ export default function App() {
               {viewMode === 'grid' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-500">
                   {searchQuery && searchResults.length === 0 ? (
-                    <div className="col-span-full flex flex-col items-center justify-center py-20 bg-[#161617]/40 border border-white/[0.04] rounded-3xl backdrop-blur-md">
+                    <div className="col-span-full flex flex-col items-center justify-center py-20 bg-[#161617]/40 border border-white/4 rounded-3xl backdrop-blur-md">
                       <SearchX size={48} className="text-gray-600 mb-5 animate-bounce" />
                       <h3 className="text-gray-300 font-medium mb-2 text-lg">No telemetry found for "{searchQuery}"</h3>
                       <p className="text-gray-500 text-sm mb-6 text-center max-w-sm">Adjust your parameters and initialize a new scan to discover deals.</p>
@@ -266,7 +264,7 @@ export default function App() {
                     </div>
                   ) : searchQuery && searchResults.length > 0 ? (
                     sortedSearchResults.slice(0, 12).map((game) => (
-                      <div key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-md border border-white/[0.08] rounded-3xl p-4 hover:border-white/30 transition-all duration-500 hover:bg-[#161617] hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.8)]">
+                      <div key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-md border border-white/8 rounded-3xl p-4 hover:border-white/30 transition-all duration-500 hover:bg-[#161617] hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.8)]">
                         <div className="rounded-2xl overflow-hidden aspect-video relative mb-4 bg-black/40">
                           <img src={getHighResImage(game.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== game.thumb) img.src = game.thumb; }} alt={game.external} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
                         </div>
@@ -279,7 +277,7 @@ export default function App() {
                       const savingsNum = Math.round(Number(deal.savings));
                       const tier = getDealTier(savingsNum);
                       return (
-                        <div key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-md border border-white/[0.08] rounded-3xl p-4 hover:border-white/30 transition-all duration-500 hover:bg-[#161617] hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.8)] transform transition-transform">
+                        <div key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-md border border-white/8 rounded-3xl p-4 hover:border-white/30 hover:bg-[#161617] hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.8)] transition-transform">
                           <div className="rounded-2xl overflow-hidden aspect-video relative mb-4 bg-black/40">
                             <img src={getHighResImage(deal.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== deal.thumb) img.src = deal.thumb; }} alt={deal.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
                             
@@ -306,10 +304,10 @@ export default function App() {
               )}
 
               {viewMode === 'table' && (
-                <div className="bg-[#161617]/60 border border-white/[0.08] rounded-3xl overflow-hidden backdrop-blur-2xl shadow-2xl animate-in fade-in duration-500">
+                <div className="bg-[#161617]/60 border border-white/8 rounded-3xl overflow-hidden backdrop-blur-2xl shadow-2xl animate-in fade-in duration-500">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-white/[0.08] text-[11px] uppercase tracking-wider text-gray-400 font-medium select-none">
+                      <tr className="border-b border-white/8 text-[11px] uppercase tracking-wider text-gray-400 font-medium select-none">
                         <th className="p-5 cursor-pointer hover:text-white transition-colors group" onClick={() => handleSort('title')}>
                           Asset Identifier <SortIcon column="title" />
                         </th>
@@ -322,7 +320,7 @@ export default function App() {
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/[0.04] text-sm">
+                    <tbody className="divide-y divide-white/4 text-sm">
                       {searchQuery && searchResults.length === 0 ? (
                          <tr>
                            <td colSpan={4} className="py-16 text-center text-gray-500 bg-black/20">
@@ -332,7 +330,7 @@ export default function App() {
                          </tr>
                       ) : searchQuery && searchResults.length > 0 ? (
                         sortedSearchResults.map((game) => (
-                          <tr key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="hover:bg-white/[0.06] cursor-pointer transition-colors duration-200 group">
+                          <tr key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="hover:bg-white/6 cursor-pointer transition-colors duration-200 group">
                             <td className="p-4 flex items-center gap-4">
                               <img src={getHighResImage(game.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== game.thumb) img.src = game.thumb; }} alt="thumb" className="w-16 h-8 rounded-md object-cover border border-white/10 group-hover:scale-105 transition-transform" />
                               <span className="font-medium text-white/90 group-hover:text-white">{game.external}</span>
@@ -347,7 +345,7 @@ export default function App() {
                           const savingsNum = Math.round(Number(deal.savings));
                           const tier = getDealTier(savingsNum);
                           return (
-                            <tr key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="hover:bg-white/[0.06] cursor-pointer transition-colors duration-200 group">
+                            <tr key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="hover:bg-white/6 cursor-pointer transition-colors duration-200 group">
                               <td className="p-4 flex items-center gap-4">
                                 <img src={getHighResImage(deal.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== deal.thumb) img.src = deal.thumb; }} alt="thumb" className="w-16 h-8 rounded-md object-cover border border-white/10 group-hover:scale-105 transition-transform" />
                                 <span className="font-medium text-white/90 group-hover:text-white">{deal.title}</span>
@@ -374,8 +372,8 @@ export default function App() {
           )}
         </div>
 
-        <div className="bg-[#161617]/40 border border-white/[0.08] rounded-3xl p-8 md:p-10 backdrop-blur-2xl shadow-2xl animate-in fade-in duration-700 mt-10">
-          <div className="flex justify-between items-center mb-8 border-b border-white/[0.08] pb-5">
+        <div className="bg-[#161617]/40 border border-white/8 rounded-3xl p-8 md:p-10 backdrop-blur-2xl shadow-2xl animate-in fade-in duration-700 mt-10">
+          <div className="flex justify-between items-center mb-8 border-b border-white/8 pb-5">
             <div className="flex items-center gap-3">
               <Bookmark className="text-white" size={18} />
               <h2 className="text-xl font-semibold tracking-tight text-white">Active Watchlist Matrix.</h2>
@@ -401,9 +399,9 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {watchlist.map(game => (
-                <div key={game.id} className="group flex justify-between items-center bg-black/50 border border-white/[0.06] p-4 rounded-2xl transition-all duration-300 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1">
+                <div key={game.id} className="group flex justify-between items-center bg-black/50 border border-white/6 p-4 rounded-2xl transition-all duration-300 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1">
                   <div>
-                    <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-[180px] mb-1">{game.title}</h4>
+                    <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-45 mb-1">{game.title}</h4>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1">
                       <Bell size={10} className="text-blue-400" /> Target: {formatPrice(game.targetPrice, currency)}
                     </span>
@@ -422,7 +420,6 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsModalOpen(false)}></div>
           
-          {/* --- NEW: RESPONSIVE BOTTOM SHEET / CENTERED MODAL --- */}
           <div className="relative w-full max-w-4xl bg-[#1c1c1e] border-t md:border border-white/15 rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.9)] animate-in slide-in-from-bottom duration-300 md:animate-in md:zoom-in-95 max-h-[85vh] md:max-h-[90vh] flex flex-col text-white">
             <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 transition-colors text-white">
               <X size={16} />
@@ -439,7 +436,7 @@ export default function App() {
               ) : (
                 <div className="flex flex-col md:flex-row gap-10">
                   
-                  <div className="w-full md:w-1/3 flex-shrink-0 flex flex-col gap-6">
+                  <div className="w-full md:w-1/3 shrink-0 flex flex-col gap-6">
                     <img 
                       src={getHighResImage(selectedGame.info.thumb)} 
                       onError={(e) => {
@@ -480,17 +477,17 @@ export default function App() {
                     <h2 className="text-3xl font-semibold tracking-tight mb-3 text-white">{selectedGame.info.title}</h2>
                     
                     <div className="grid grid-cols-2 gap-4 mb-6">
-                      <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-4">
+                      <div className="bg-white/4 border border-white/10 rounded-2xl p-4">
                         <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold block mb-1">Historical Low</span>
                         <span className="text-2xl font-semibold text-emerald-400">{formatPrice(selectedGame.cheapestPriceEver.price, currency)}</span>
                       </div>
-                      <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-4">
+                      <div className="bg-white/4 border border-white/10 rounded-2xl p-4">
                         <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold block mb-1">Recorded Date</span>
                         <span className="text-base font-medium text-gray-200">{new Date(selectedGame.cheapestPriceEver.date * 1000).toLocaleDateString()}</span>
                       </div>
                     </div>
 
-                    <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-4 mb-6">
+                    <div className="bg-white/4 border border-white/10 rounded-2xl p-4 mb-6">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
                           <TrendingUp size={13} className="text-blue-400" /> 30-Day Volatility Trend
@@ -508,13 +505,12 @@ export default function App() {
                     
                     <h3 className="text-sm font-semibold tracking-wider uppercase text-gray-400 mb-3">Storefront Matrix</h3>
                     
-                    <div className="flex flex-col gap-2.5 overflow-y-auto pr-1 max-h-[160px]">
+                    <div className="flex flex-col gap-2.5 overflow-y-auto pr-1 max-h-40">
                       {selectedGame.deals && selectedGame.deals.length > 0 ? (
                         selectedGame.deals.map((deal: any) => (
                           <div 
                             key={deal.dealID} 
-                            onMouseEnter={() => setHoveredStore(deal)}
-                            className="flex items-center justify-between bg-black/30 border border-white/[0.06] rounded-xl p-3.5 hover:bg-white/[0.06] transition-colors"
+                            className="flex items-center justify-between bg-black/30 border border-white/6 rounded-xl p-3.5 hover:bg-white/6 transition-colors"
                           >
                             <div>
                               <div className="font-medium text-xs text-white">{STORE_MAP[deal.storeID] || `Store #${deal.storeID}`}</div>
@@ -552,7 +548,7 @@ export default function App() {
       )}
 
       <div 
-        className={`fixed bottom-6 right-6 z-[100] transition-all duration-500 transform ${
+        className={`fixed bottom-6 right-6 z-100 transition-all duration-500 transform ${
           toastMessage ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'
         }`}
       >
