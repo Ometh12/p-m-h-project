@@ -11,65 +11,39 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Expanding the ESLint configuration
+## ✨ Core Features
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+* **🔒 Supabase Authentication:** Secure, token-based Postgres session management.
+* **📡 Active Matrix Scanner:** In-browser automated scanning that pings the CheapShark API and triggers UI alerts when target thresholds are breached.
+* **📊 Deep Market Analytics:** 30-day price volatility charts and historical low tracking.
+* **🎛️ Advanced Grid Controls:** Toggleable printable gridlines, auto-fitting column widths, and Safe Mode row deletion.
+* **🌐 Global Thresholds:** Hard-lock fiat currency (USD, EUR, GBP) and establish absolute deal floor percentages across the entire matrix.
+* **💾 Data Export:** Compile and export your tracked matrix directly into raw CSV format for tabular spreadsheet analysis.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🛠️ Tech Stack
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+* **Frontend:** React 18, TypeScript, Vite
+* **Styling:** Tailwind CSS, Lucide React (Icons)
+* **Backend / Auth:** Supabase
+* **Data API:** CheapShark REST API
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🚀 Getting Started
 
-```
+To initialize this terminal on your local machine, follow these steps:
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 1. Clone the repository
+```bash
+git clone [https://github.com/YOUR_USERNAME/game-tracker-pro.git](https://github.com/YOUR_USERNAME/game-tracker-pro.git)
+cd game-tracker-pro
+2. Install dependencies
+Bash
+npm install
+3. Establish Database Connection
+Create a .env file in the root directory and add your Supabase connection strings:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Code snippet
+VITE_SUPABASE_URL=[https://your-project-url.supabase.co](https://your-project-url.supabase.co)
+VITE_SUPABASE_ANON_KEY=your-publishable-anon-key
+4. Boot the Terminal
+Bash
+npm run dev
