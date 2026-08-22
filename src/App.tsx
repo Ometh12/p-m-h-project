@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut, Grid3X3, Columns, ShieldAlert, Percent, Coins } from 'lucide-react';
 import { STORE_MAP, formatPrice, getHighResImage, CURRENCY_RATES } from './utils';
 import Navbar from './components/Navbar';
@@ -52,6 +52,26 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'title' | 'price' | 'savings'>('savings');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // --- NEW: Custom glass dropdown open/close state ---
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+
+  const discountOptions = [
+    { value: 0, label: 'All Offsets' },
+    { value: 50, label: '50% Off+' },
+    { value: 75, label: '75% Off+' },
+    { value: 90, label: '90% Off+' },
+  ];
+
+  const sortOptions = [
+    { value: 'savings-desc', label: 'Deal Score (High to Low)' },
+    { value: 'price-asc', label: 'Price (Low to High)' },
+    { value: 'price-desc', label: 'Price (High to Low)' },
+    { value: 'title-asc', label: 'Title (A-Z)' },
+  ];
+
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => { setToastMessage(null); }, 3000);
@@ -80,6 +100,20 @@ export default function App() {
   useEffect(() => {
     setMinDiscount(globalDealFloor);
   }, [globalDealFloor]);
+
+  // --- NEW: Close custom dropdowns when clicking outside of them ---
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+        setFilterMenuOpen(false);
+      }
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node)) {
+        setSortMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,16 +314,7 @@ export default function App() {
         <div className="absolute bottom-[-10%] left-[10%] w-[50vw] h-[50vw] rounded-full bg-indigo-600/15 blur-[150px] animate-pulse" style={{ animationDuration: '12s' }}></div>
       </div>
 
-      <Navbar currency={currency} setCurrency={setCurrency} watchlistCount={watchlist.length} />
-
-      <div className="fixed top-5 right-6 z-40 flex items-center gap-3">
-        <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 rounded-full bg-[#161617]/80 backdrop-blur-xl border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:border-white/30 transition-all shadow-lg hover:scale-105 active:scale-95">
-          <Settings size={16} />
-        </button>
-        <button onClick={() => setIsSettingsOpen(true)} className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white border border-white/20 shadow-lg hover:scale-105 transition-all">
-          <User size={16} />
-        </button>
-      </div>
+      <Navbar currency={currency} setCurrency={setCurrency} watchlistCount={watchlist.length} onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="relative z-10 max-w-6xl mx-auto px-6 pt-36 pb-24">
         
@@ -329,36 +354,61 @@ export default function App() {
 
         <div className="flex flex-col sm:flex-row justify-between items-center mb-10 pb-6 border-b border-white/8 gap-4">
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative" ref={filterMenuRef}>
               <Filter size={15} className="text-gray-400" />
-              <select 
-                className="bg-[#161617] border border-white/10 rounded-lg py-1.5 px-3 text-xs text-gray-200 focus:outline-none transition-colors hover:border-white/30 cursor-pointer"
-                value={minDiscount}
-                onChange={(e) => setMinDiscount(Number(e.target.value))}
+              <button
+                type="button"
+                onClick={() => { setFilterMenuOpen(o => !o); setSortMenuOpen(false); }}
+                className={`flex items-center justify-between gap-3 min-w-[140px] bg-white/10 backdrop-blur-2xl backdrop-saturate-150 border rounded-lg py-1.5 px-3 text-xs text-gray-100 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] ${filterMenuOpen ? 'border-white/40 bg-white/15' : 'border-white/15 hover:bg-white/15 hover:border-white/30'}`}
               >
-                <option value={0}>All Offsets</option>
-                <option value={50}>50% Off+</option>
-                <option value={75}>75% Off+</option>
-                <option value={90}>90% Off+</option>
-              </select>
+                {discountOptions.find(o => o.value === minDiscount)?.label}
+                <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${filterMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {filterMenuOpen && (
+                <div className="absolute top-full left-0 mt-2 min-w-[160px] bg-white/10 backdrop-blur-2xl backdrop-saturate-150 border border-white/15 rounded-2xl shadow-[0_25px_50px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.1)] overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 origin-top p-1.5">
+                  {discountOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setMinDiscount(opt.value); setFilterMenuOpen(false); }}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-colors ${minDiscount === opt.value ? 'bg-blue-500/25 text-blue-300 font-medium' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             
-            <div className="flex items-center gap-2 border-l border-white/10 pl-4">
+            <div className="flex items-center gap-2 border-l border-white/10 pl-4 relative" ref={sortMenuRef}>
               <ArrowUpDown size={15} className="text-gray-400" />
-              <select 
-                className="bg-[#161617] border border-white/10 rounded-lg py-1.5 px-3 text-xs text-gray-200 focus:outline-none transition-colors hover:border-white/30 cursor-pointer"
-                value={`${sortBy}-${sortDirection}`}
-                onChange={(e) => {
-                  const [newSort, newDir] = e.target.value.split('-');
-                  setSortBy(newSort as any);
-                  setSortDirection(newDir as any);
-                }}
+              <button
+                type="button"
+                onClick={() => { setSortMenuOpen(o => !o); setFilterMenuOpen(false); }}
+                className={`flex items-center justify-between gap-3 min-w-[200px] bg-white/10 backdrop-blur-2xl backdrop-saturate-150 border rounded-lg py-1.5 px-3 text-xs text-gray-100 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] ${sortMenuOpen ? 'border-white/40 bg-white/15' : 'border-white/15 hover:bg-white/15 hover:border-white/30'}`}
               >
-                <option value="savings-desc">Deal Score (High to Low)</option>
-                <option value="price-asc">Price (Low to High)</option>
-                <option value="price-desc">Price (High to Low)</option>
-                <option value="title-asc">Title (A-Z)</option>
-              </select>
+                {sortOptions.find(o => o.value === `${sortBy}-${sortDirection}`)?.label}
+                <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${sortMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {sortMenuOpen && (
+                <div className="absolute top-full left-0 mt-2 min-w-[210px] bg-white/10 backdrop-blur-2xl backdrop-saturate-150 border border-white/15 rounded-2xl shadow-[0_25px_50px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.1)] overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150 origin-top p-1.5">
+                  {sortOptions.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        const [newSort, newDir] = opt.value.split('-');
+                        setSortBy(newSort as any);
+                        setSortDirection(newDir as any);
+                        setSortMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs transition-colors ${`${sortBy}-${sortDirection}` === opt.value ? 'bg-blue-500/25 text-blue-300 font-medium' : 'text-gray-300 hover:bg-white/10 hover:text-white'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -376,7 +426,7 @@ export default function App() {
           {(loading || isSearching) ? (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-pulse">
                {[...Array(8)].map((_, i) => (
-                 <div key={i} className="bg-[#161617]/40 border border-white/4 rounded-3xl p-4 shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)]">
+                 <div key={i} className="bg-white/5 backdrop-blur-2xl backdrop-saturate-150 border border-white/10 rounded-3xl p-4 shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)]">
                    <div className="flex flex-col gap-3">
                      <div className="rounded-2xl bg-white/5 aspect-video w-full"></div>
                      <div className="h-4 bg-white/10 rounded-full w-3/4 mt-1"></div>
@@ -393,7 +443,7 @@ export default function App() {
               {viewMode === 'grid' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-500">
                   {searchQuery && searchResults.length === 0 ? (
-                    <div className="col-span-full flex flex-col items-center justify-center py-20 bg-[#161617]/40 border border-white/4 rounded-3xl backdrop-blur-md shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
+                    <div className="col-span-full flex flex-col items-center justify-center py-20 bg-white/5 backdrop-blur-2xl backdrop-saturate-150 border border-white/10 rounded-3xl shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
                       <SearchX size={48} className="text-gray-600 mb-5 animate-bounce" />
                       <h3 className="text-gray-300 font-medium mb-2 text-lg">No telemetry found for "{searchQuery}"</h3>
                       <p className="text-gray-500 text-sm mb-6 text-center max-w-sm">Adjust your parameters and initialize a new scan to discover deals.</p>
@@ -401,7 +451,7 @@ export default function App() {
                     </div>
                   ) : searchQuery && searchResults.length > 0 ? (
                     sortedSearchResults.slice(0, 12).map((game) => (
-                      <div key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-xl border border-white/8 rounded-3xl p-4 hover:border-white/30 transition-all duration-500 hover:bg-[#161617]/80 hover:-translate-y-1.5 shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)]">
+                      <div key={game.gameID} onClick={() => handleCardClick(game.gameID)} className="group cursor-pointer bg-white/5 backdrop-blur-2xl backdrop-saturate-150 border border-white/10 rounded-3xl p-4 hover:border-white/25 transition-all duration-500 hover:bg-white/10 hover:-translate-y-1.5 shadow-[0_20px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.12)]">
                         <div className="rounded-2xl overflow-hidden aspect-video relative mb-4 bg-black/40">
                           <img src={getHighResImage(game.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== game.thumb) img.src = game.thumb; }} alt={game.external} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
                         </div>
@@ -414,7 +464,7 @@ export default function App() {
                       const savingsNum = Math.round(Number(deal.savings));
                       const tier = getDealTier(savingsNum);
                       return (
-                        <div key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="group cursor-pointer bg-[#161617]/40 backdrop-blur-xl border border-white/8 rounded-3xl p-4 transition-all duration-500 hover:border-white/30 hover:bg-[#161617]/80 hover:-translate-y-1.5 shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] transform">
+                        <div key={deal.gameID} onClick={() => handleCardClick(deal.gameID)} className="group cursor-pointer bg-white/5 backdrop-blur-2xl backdrop-saturate-150 border border-white/10 rounded-3xl p-4 transition-all duration-500 hover:border-white/25 hover:bg-white/10 hover:-translate-y-1.5 shadow-[0_20px_40px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.12)] transform">
                           <div className="rounded-2xl overflow-hidden aspect-video relative mb-4 bg-black/40">
                             <img src={getHighResImage(deal.thumb)} onError={(e) => { const img = e.target as HTMLImageElement; if (img.src !== deal.thumb) img.src = deal.thumb; }} alt={deal.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
                             
@@ -441,7 +491,7 @@ export default function App() {
               )}
 
               {viewMode === 'table' && (
-                <div className={`bg-[#161617]/60 border border-white/8 rounded-3xl overflow-x-auto backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] animate-in fade-in duration-500`}>
+                <div className={`bg-white/5 border border-white/10 rounded-3xl overflow-x-auto backdrop-blur-2xl backdrop-saturate-150 shadow-[0_30px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.08)] animate-in fade-in duration-500`}>
                   <table className={tableClasses}>
                     <thead>
                       <tr>
@@ -509,7 +559,7 @@ export default function App() {
           )}
         </div>
 
-        <div className="bg-[#161617]/40 border border-white/8 rounded-3xl p-8 md:p-10 backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] animate-in fade-in duration-700 mt-10">
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 md:p-10 backdrop-blur-2xl backdrop-saturate-150 shadow-[0_30px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)] animate-in fade-in duration-700 mt-10">
           <div className="flex justify-between items-center mb-8 border-b border-white/8 pb-5">
             <div className="flex items-center gap-3">
               <Bookmark className="text-white" size={18} />
@@ -536,7 +586,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {watchlist.map(game => (
-                <div key={game.id} className={`group flex justify-between items-center bg-black/50 border ${pendingDeleteId === game.id ? 'border-red-500 bg-red-500/10 scale-[0.98]' : 'border-white/6 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1'} p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]`}>
+                <div key={game.id} className={`group flex justify-between items-center bg-white/5 backdrop-blur-xl backdrop-saturate-150 border ${pendingDeleteId === game.id ? 'border-red-500 bg-red-500/10 scale-[0.98]' : 'border-white/10 hover:border-white/25 hover:bg-white/10 hover:-translate-y-1'} p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.4)]`}>
                   <div>
                     <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-45 mb-1">{game.title}</h4>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1 font-mono">
