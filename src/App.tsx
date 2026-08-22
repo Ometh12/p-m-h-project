@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut, Grid3X3, Columns, ShieldAlert, Percent, Coins } from 'lucide-react';
 import { STORE_MAP, formatPrice, getHighResImage, CURRENCY_RATES } from './utils';
 import Navbar from './components/Navbar';
@@ -48,6 +48,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [minDiscount, setMinDiscount] = useState<number>(globalDealFloor);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [watchlistPrices, setWatchlistPrices] = useState<Record<string, number | null>>({});
+  const alertedWatchlistIds = useRef(new Set<string>());
 
   const [sortBy, setSortBy] = useState<'title' | 'price' | 'savings'>('savings');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -76,6 +78,50 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('appleWatchlist', JSON.stringify(watchlist));
   }, [watchlist]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const checkWatchlistPrices = async () => {
+      const prices = await Promise.all(watchlist.map(async (item) => {
+        try {
+          const response = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${encodeURIComponent(item.id)}`);
+          if (!response.ok) return [item.id, null] as const;
+          const game = await response.json();
+          const currentPrice = game.deals?.reduce((lowest: number | null, deal: any) => {
+            const price = Number(deal.price);
+            return Number.isFinite(price) && (lowest === null || price < lowest) ? price : lowest;
+          }, null) ?? null;
+
+          if (currentPrice !== null && currentPrice <= item.targetPrice / CURRENCY_RATES[currency].rate) {
+            if (!alertedWatchlistIds.current.has(item.id)) {
+              alertedWatchlistIds.current.add(item.id);
+              showToast(`🔔 ${item.title} reached your target price.`);
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('Wishlist price alert', { body: `${item.title} is now ${formatPrice(currentPrice, currency)}.` });
+              }
+            }
+          } else {
+            alertedWatchlistIds.current.delete(item.id);
+          }
+
+          return [item.id, currentPrice] as const;
+        } catch (error) {
+          console.error(`Failed to check price for ${item.title}`, error);
+          return [item.id, null] as const;
+        }
+      }));
+
+      if (isCurrent) setWatchlistPrices(Object.fromEntries(prices));
+    };
+
+    checkWatchlistPrices();
+    const intervalId = window.setInterval(checkWatchlistPrices, 5 * 60 * 1000);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+    };
+  }, [watchlist, currency]);
 
   useEffect(() => {
     setMinDiscount(globalDealFloor);
@@ -144,6 +190,7 @@ export default function App() {
       showToast(`⚠️ ${title} is already being tracked.`);
       return prev;
     });
+    alertedWatchlistIds.current.delete(id);
     setIsModalOpen(false);
   };
 
@@ -165,6 +212,12 @@ export default function App() {
       if (game) showToast(`🗑️ ${game.title} removed from matrix.`);
       return prev.filter(item => item.id !== id);
     });
+    setWatchlistPrices(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    alertedWatchlistIds.current.delete(id);
     setPendingDeleteId(null);
   };
 
@@ -535,12 +588,18 @@ export default function App() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {watchlist.map(game => (
+              {watchlist.map(game => {
+                const livePrice = watchlistPrices[game.id];
+                const targetReached = livePrice !== null && livePrice !== undefined && livePrice <= game.targetPrice / CURRENCY_RATES[currency].rate;
+                return (
                 <div key={game.id} className={`group flex justify-between items-center bg-black/50 border ${pendingDeleteId === game.id ? 'border-red-500 bg-red-500/10 scale-[0.98]' : 'border-white/6 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1'} p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]`}>
                   <div>
                     <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-45 mb-1">{game.title}</h4>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1 font-mono">
                       <Bell size={10} className="text-blue-400" /> Target: {formatPrice(game.targetPrice, currency)}
+                    </span>
+                    <span className={`text-[10px] flex items-center gap-1 mt-1 font-mono ${targetReached ? 'text-emerald-400' : 'text-gray-500'}`}>
+                      {livePrice === undefined ? 'Checking live price...' : livePrice === null ? 'Price unavailable' : targetReached ? 'Target reached' : `Live: ${formatPrice(livePrice, currency)}`}
                     </span>
                   </div>
                   <button 
@@ -550,7 +609,8 @@ export default function App() {
                     <X size={14} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
