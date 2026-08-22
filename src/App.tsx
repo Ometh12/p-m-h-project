@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut, Grid3X3, Columns, ShieldAlert, Percent, Coins } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, Bookmark, X, Bell, ExternalLink, LayoutGrid, TableProperties, Filter, Download, TrendingUp, Flame, SearchX, ArrowUpDown, ChevronUp, ChevronDown, User, Settings, Lock, ShieldCheck, LogOut, Grid3X3, Columns, ShieldAlert, Percent, Coins, Radar } from 'lucide-react';
 import { STORE_MAP, formatPrice, getHighResImage, CURRENCY_RATES } from './utils';
 import Navbar from './components/Navbar';
 import InteractiveChart from './components/InteractiveChart';
@@ -19,7 +19,6 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'account' | 'data' | 'global'>('data');
 
-  // --- NEW: Advanced Matrix & Global Settings State ---
   const [showGridlines, setShowGridlines] = useState(false);
   const [autoFitColumns, setAutoFitColumns] = useState(false);
   const [safeDelete, setSafeDelete] = useState(true);
@@ -45,18 +44,15 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [isScanning, setIsScanning] = useState(false); // --- NEW: Scanner State ---
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [minDiscount, setMinDiscount] = useState<number>(globalDealFloor);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [watchlistPrices, setWatchlistPrices] = useState<Record<string, number | null>>({});
-  const alertedWatchlistIds = useRef(new Set<string>());
-
+  const [toastMessage, setToastMessage] = useState<React.ReactNode | null>(null); // Updated for complex toasts
   const [sortBy, setSortBy] = useState<'title' | 'price' | 'savings'>('savings');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  const showToast = (message: string) => {
+  const showToast = (message: React.ReactNode, duration = 3000) => {
     setToastMessage(message);
-    setTimeout(() => { setToastMessage(null); }, 3000);
+    setTimeout(() => { setToastMessage(null); }, duration);
   };
 
   useEffect(() => {
@@ -80,52 +76,62 @@ export default function App() {
   }, [watchlist]);
 
   useEffect(() => {
-    let isCurrent = true;
-
-    const checkWatchlistPrices = async () => {
-      const prices = await Promise.all(watchlist.map(async (item) => {
-        try {
-          const response = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${encodeURIComponent(item.id)}`);
-          if (!response.ok) return [item.id, null] as const;
-          const game = await response.json();
-          const currentPrice = game.deals?.reduce((lowest: number | null, deal: any) => {
-            const price = Number(deal.price);
-            return Number.isFinite(price) && (lowest === null || price < lowest) ? price : lowest;
-          }, null) ?? null;
-
-          if (currentPrice !== null && currentPrice <= item.targetPrice / CURRENCY_RATES[currency].rate) {
-            if (!alertedWatchlistIds.current.has(item.id)) {
-              alertedWatchlistIds.current.add(item.id);
-              showToast(`🔔 ${item.title} reached your target price.`);
-              if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('Wishlist price alert', { body: `${item.title} is now ${formatPrice(currentPrice, currency)}.` });
-              }
-            }
-          } else {
-            alertedWatchlistIds.current.delete(item.id);
-          }
-
-          return [item.id, currentPrice] as const;
-        } catch (error) {
-          console.error(`Failed to check price for ${item.title}`, error);
-          return [item.id, null] as const;
-        }
-      }));
-
-      if (isCurrent) setWatchlistPrices(Object.fromEntries(prices));
-    };
-
-    checkWatchlistPrices();
-    const intervalId = window.setInterval(checkWatchlistPrices, 5 * 60 * 1000);
-    return () => {
-      isCurrent = false;
-      window.clearInterval(intervalId);
-    };
-  }, [watchlist, currency]);
-
-  useEffect(() => {
     setMinDiscount(globalDealFloor);
   }, [globalDealFloor]);
+
+  // --- NEW: Automated Matrix Scanner ---
+  const scanWatchlistAlerts = useCallback(async () => {
+    if (watchlist.length === 0) {
+      showToast('⚠️ Matrix is empty. No targets to scan.');
+      return;
+    }
+    
+    setIsScanning(true);
+    showToast('📡 Initializing active matrix scan...');
+
+    try {
+      // CheapShark allows bulk ID lookups via comma-separated string
+      const ids = watchlist.map(w => w.id).join(',');
+      const res = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${ids}`);
+      const data = await res.json();
+      
+      let alertsTriggered = 0;
+
+      watchlist.forEach((item, index) => {
+        const gameData = data[item.id];
+        if (gameData && gameData.deals && gameData.deals.length > 0) {
+          // Find the absolute cheapest current live price across all stores
+          const currentCheapest = Math.min(...gameData.deals.map((d: any) => parseFloat(d.price)));
+          
+          if (currentCheapest <= item.targetPrice) {
+            alertsTriggered++;
+            // Stagger the alerts so they don't overlap instantly
+            setTimeout(() => {
+              showToast(
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-red-400 font-bold uppercase tracking-widest text-[10px]">
+                    <Bell size={12} className="animate-pulse" /> Target Reached
+                  </div>
+                  <div><span className="text-white">{item.title}</span> has dropped to <span className="text-emerald-400">{formatPrice(currentCheapest.toString(), currency)}</span>!</div>
+                </div>, 
+                5000 // Hold on screen longer
+              );
+            }, index * 1500); 
+          }
+        }
+      });
+
+      if (alertsTriggered === 0) {
+        setTimeout(() => showToast('✅ Scan complete. No targets breached.'), 1500);
+      }
+    } catch (error) {
+      console.error("Scan failed", error);
+      showToast('❌ Telemetry scan failed. Check network connection.');
+    } finally {
+      setTimeout(() => setIsScanning(false), 1000);
+    }
+  }, [watchlist, currency]);
+
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +145,8 @@ export default function App() {
         const { error } = await supabase.auth.signInWithPassword({ email: emailInput, password: passwordInput });
         if (error) throw error;
         showToast(`✅ Secure connection established.`);
+        // Run an automatic scan when they log in!
+        setTimeout(() => scanWatchlistAlerts(), 2000);
       }
     } catch (error: any) {
       console.error("Authentication Error:", error);
@@ -190,20 +198,14 @@ export default function App() {
       showToast(`⚠️ ${title} is already being tracked.`);
       return prev;
     });
-    alertedWatchlistIds.current.delete(id);
     setIsModalOpen(false);
   };
 
-  // --- NEW: Safe Deletion Logic ---
   const removeFromWatchlist = (id: string) => {
     if (safeDelete && pendingDeleteId !== id) {
       setPendingDeleteId(id);
       showToast(`⚠️ Safe Mode: Click delete again to confirm row removal.`);
-      
-      // Auto-reset the pending delete status after 4 seconds
-      setTimeout(() => {
-        setPendingDeleteId(null);
-      }, 4000);
+      setTimeout(() => { setPendingDeleteId(null); }, 4000);
       return;
     }
 
@@ -212,12 +214,6 @@ export default function App() {
       if (game) showToast(`🗑️ ${game.title} removed from matrix.`);
       return prev.filter(item => item.id !== id);
     });
-    setWatchlistPrices(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    alertedWatchlistIds.current.delete(id);
     setPendingDeleteId(null);
   };
 
@@ -319,7 +315,6 @@ export default function App() {
     );
   }
 
-  // --- Dynamic Table Styling Classes based on user settings ---
   const tableClasses = `w-full text-left border-collapse ${autoFitColumns ? 'table-auto' : 'table-fixed'}`;
   const cellClasses = `p-4 font-sans ${showGridlines ? 'border border-white/10' : ''} ${autoFitColumns ? 'whitespace-nowrap' : ''}`;
   const headerClasses = `p-5 text-[11px] uppercase tracking-wider text-gray-400 font-medium select-none bg-black/20 ${showGridlines ? 'border border-white/10' : 'border-b border-white/8'}`;
@@ -562,24 +557,47 @@ export default function App() {
           )}
         </div>
 
-        <div className="bg-[#161617]/40 border border-white/8 rounded-3xl p-8 md:p-10 backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] animate-in fade-in duration-700 mt-10">
-          <div className="flex justify-between items-center mb-8 border-b border-white/8 pb-5">
+        <div className="bg-[#161617]/40 border border-white/8 rounded-3xl p-8 md:p-10 backdrop-blur-2xl shadow-[0_30px_60px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] animate-in fade-in duration-700 mt-10 relative overflow-hidden">
+          
+          {/* Scanning Overlay Animation */}
+          {isScanning && (
+            <div className="absolute inset-0 bg-blue-500/5 z-10 pointer-events-none overflow-hidden">
+              <div className="w-full h-[2px] bg-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,1)] animate-[scan_2s_ease-in-out_infinite]"></div>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center mb-8 border-b border-white/8 pb-5 relative z-20">
             <div className="flex items-center gap-3">
               <Bookmark className="text-white" size={18} />
               <h2 className="text-xl font-semibold tracking-tight text-white">Active Watchlist Matrix.</h2>
             </div>
-            {watchlist.length > 0 && (
-              <button 
-                onClick={exportWatchlistToCSV}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white hover:text-black text-white px-4 py-2 rounded-full text-xs font-medium transition-all duration-300 shadow-sm"
-              >
-                <Download size={14} /> Export CSV
-              </button>
-            )}
+            
+            <div className="flex items-center gap-3">
+              {/* --- NEW: Active Scan Button --- */}
+              {watchlist.length > 0 && (
+                <button 
+                  onClick={scanWatchlistAlerts}
+                  disabled={isScanning}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all duration-300 shadow-sm ${isScanning ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                >
+                  <Radar size={14} className={isScanning ? 'animate-spin' : ''} /> 
+                  {isScanning ? 'Scanning...' : 'Scan Targets'}
+                </button>
+              )}
+
+              {watchlist.length > 0 && (
+                <button 
+                  onClick={exportWatchlistToCSV}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white hover:text-black text-white px-4 py-2 rounded-full text-xs font-medium transition-all duration-300 shadow-sm"
+                >
+                  <Download size={14} /> Export CSV
+                </button>
+              )}
+            </div>
           </div>
           
           {watchlist.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-500">
+            <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-500 relative z-20">
               <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 border border-white/10 shadow-inner">
                 <Bookmark className="text-gray-500" size={24} />
               </div>
@@ -587,19 +605,13 @@ export default function App() {
               <p className="text-gray-500 text-xs max-w-sm leading-relaxed">Search the database and select a target price to begin tracking automated market telemetry.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {watchlist.map(game => {
-                const livePrice = watchlistPrices[game.id];
-                const targetReached = livePrice !== null && livePrice !== undefined && livePrice <= game.targetPrice / CURRENCY_RATES[currency].rate;
-                return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-20">
+              {watchlist.map(game => (
                 <div key={game.id} className={`group flex justify-between items-center bg-black/50 border ${pendingDeleteId === game.id ? 'border-red-500 bg-red-500/10 scale-[0.98]' : 'border-white/6 hover:border-white/30 hover:bg-black/80 hover:-translate-y-1'} p-4 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-[0_10px_20px_rgba(0,0,0,0.5)]`}>
                   <div>
                     <h4 className="font-medium text-xs tracking-tight text-white/90 truncate max-w-45 mb-1">{game.title}</h4>
                     <span className="text-[11px] text-gray-400 flex items-center gap-1 font-mono">
                       <Bell size={10} className="text-blue-400" /> Target: {formatPrice(game.targetPrice, currency)}
-                    </span>
-                    <span className={`text-[10px] flex items-center gap-1 mt-1 font-mono ${targetReached ? 'text-emerald-400' : 'text-gray-500'}`}>
-                      {livePrice === undefined ? 'Checking live price...' : livePrice === null ? 'Price unavailable' : targetReached ? 'Target reached' : `Live: ${formatPrice(livePrice, currency)}`}
                     </span>
                   </div>
                   <button 
@@ -609,14 +621,12 @@ export default function App() {
                     <X size={14} />
                   </button>
                 </div>
-                );
-              })}
+              ))}
             </div>
           )}
         </div>
       </main>
 
-      {/* --- UPGRADED ADVANCED SETTINGS MODAL --- */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-3xl transition-opacity animate-in fade-in duration-300" onClick={() => setIsSettingsOpen(false)}></div>
@@ -645,7 +655,6 @@ export default function App() {
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     
-                    {/* Toggle: Printable Gridlines */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between">
                       <div>
                         <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Grid3X3 size={16} className="text-blue-400"/> Printable Gridlines</h4>
@@ -659,7 +668,6 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* Toggle: Auto-fit Columns */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col justify-between">
                       <div>
                         <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><Columns size={16} className="text-emerald-400"/> Auto-fit Column Widths</h4>
@@ -673,7 +681,6 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* Toggle: Safe Mode Deletion */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-5 md:col-span-2 flex justify-between items-center">
                       <div className="pr-8">
                         <h4 className="text-sm font-semibold mb-1 flex items-center gap-2"><ShieldAlert size={16} className="text-amber-400"/> Safe Mode: Row Management</h4>
@@ -901,11 +908,11 @@ export default function App() {
       )}
 
       <div 
-        className={`fixed bottom-6 right-6 z-[100] transition-all duration-500 transform ${
+        className={`fixed bottom-6 right-6 z-[100] transition-all duration-500 transform flex flex-col gap-3 ${
           toastMessage ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'
         }`}
       >
-        <div className="bg-[#1c1c1e]/90 backdrop-blur-xl border border-white/10 text-white shadow-[0_20px_40px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] px-5 py-3 rounded-2xl font-medium text-sm flex items-center gap-3 font-mono">
+        <div className="bg-[#1c1c1e]/90 backdrop-blur-xl border border-white/10 text-white shadow-[0_20px_40px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] px-5 py-4 rounded-2xl font-medium text-sm flex items-center gap-3 font-sans">
           {toastMessage}
         </div>
       </div>
