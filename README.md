@@ -33,15 +33,31 @@ To initialize this terminal on your local machine, follow these steps:
 ```bash
 git clone [https://github.com/YOUR_USERNAME/game-tracker-pro.git](https://github.com/YOUR_USERNAME/game-tracker-pro.git)
 cd game-tracker-pro
+```
 2. Install dependencies
-Bash
+```bash
 npm install
+```
 3. Establish Database Connection
 Create a .env file in the root directory and add your Supabase connection strings:
 
-Code snippet
+```Code snippet
 VITE_SUPABASE_URL=[https://your-project-url.supabase.co](https://your-project-url.supabase.co)
 VITE_SUPABASE_ANON_KEY=your-publishable-anon-key
+(Note: Ensure your supabaseClient.ts is configured to read from these environment variables, or hardcode them strictly for local testing).
+```
 4. Boot the Terminal
-Bash
+```bash
 npm run dev
+```
+Open http://localhost:5173 in your browser to access the operator dashboard.
+
+⚠️ Known Behaviors & Security
+Authentication: Supabase email confirmation must be disabled in your project settings for instant local testing, or a valid SMTP server must be configured.
+
+Scanning: The Active Matrix Scanner relies on live in-browser fetch requests and is only active while the dashboard is running.
+
+🤝 Contributing
+Contributions, issues, and feature requests are welcome.
+
+Engineered for players. Structured for analysts.
